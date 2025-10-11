@@ -1,0 +1,6 @@
+# binary
+target/
+
+# direnv stuff
+.direnv/
+.envrc
