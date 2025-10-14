@@ -1,3 +1,6 @@
+pub mod asm;
 pub mod vm;
 
-fn main() {}
+fn main() {
+    println!("TODO!");
+}
