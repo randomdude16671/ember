@@ -1,32 +1,30 @@
+use crate::asm::tokens::*;
 use hashbrown::HashMap;
 
-#[derive(Debug)]
-pub enum TokenType {
-    LABEL,
-    INSTRUCTION,
-    REGISTER,
-    COMMA,
-    LITERAL,
-    COMMENT,
-    OPERATOR,
-    EOL,
-    EOF,
-}
-
-#[derive(Debug)]
 struct Rpos {
     ln: usize,
     col: usize,
 }
 
-#[derive(Debug)]
-pub struct Token {
-    typ: TokenType,
-    literal: String,
+impl Rpos {
+    fn new() -> Self {
+        Self { ln: 1, col: 0 }
+    }
+
+    fn advance(&mut self, char: Option<char>) {
+        if let Some(c) = char {
+            if c == '\n' {
+                self.ln += 1;
+                self.col = 0;
+            } else {
+                self.col += 1;
+            }
+        }
+    }
 }
 
 pub struct Tokenizer<'a> {
-    src: &'a str,
+    src: &'a String,
     input: std::str::Chars<'a>,
     ch: Option<char>,
     file_path: String,
@@ -37,7 +35,7 @@ pub struct Tokenizer<'a> {
 }
 
 impl<'a> Tokenizer<'a> {
-    pub fn new(src: &'a str, file_path: String) -> Self {
+    pub fn new(src: &'a String, file_path: String) -> Self {
         let mut input = src.chars();
         let ch = input.next();
         Self {
@@ -45,27 +43,28 @@ impl<'a> Tokenizer<'a> {
             input,
             ch,
             file_path,
-            pos: Rpos { ln: 1, col: 0 },
+            pos: Rpos::new(),
             read_pos: ch.map_or(0, |c| c.len_utf8()),
             position: 0,
             keywords: HashMap::new(),
         }
     }
 
-    pub fn advance(&mut self) {
-        if let Some(c) = self.ch {
-            self.position = self.read_pos;
-            self.read_pos += c.len_utf8(); // advance by UTF-8 byte length
-            self.ch = self.input.next();
+    pub fn read_char(&mut self) {
+        self.ch = self.input.next();
 
-            if c == '\n' {
-                self.pos.ln += 1;
-                self.pos.col = 0;
-            } else {
-                self.pos.col += 1;
-            }
+        if let Some(ch) = self.ch {
+            self.position = self.read_pos;
+            self.read_pos += ch.len_utf8(); // advance by how much the utf8 length of char is
         } else {
+            // EOF
             self.position = self.read_pos;
         }
+
+        self.pos.advance(self.ch);
+    }
+
+    pub fn peek_char(&mut self) -> Option<char> {
+        self.input.clone().next()
     }
 }
