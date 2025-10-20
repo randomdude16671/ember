@@ -1,4 +1,5 @@
 use crate::asm::tokens::*;
+use crate::map;
 use hashbrown::HashMap;
 
 struct Rpos {
@@ -38,6 +39,7 @@ impl<'a> Tokenizer<'a> {
     pub fn new(src: &'a String, file_path: String) -> Self {
         let mut input = src.chars();
         let ch = input.next();
+        let keywords: HashMap<String, TokenType> = map! {};
         Self {
             src,
             input,
@@ -46,7 +48,7 @@ impl<'a> Tokenizer<'a> {
             pos: Rpos::new(),
             read_pos: ch.map_or(0, |c| c.len_utf8()),
             position: 0,
-            keywords: HashMap::new(),
+            keywords: keywords,
         }
     }
 

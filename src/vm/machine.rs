@@ -1,9 +1,6 @@
-use std::convert::TryInto;
-
 pub type Word = i32;
-pub type Addr = usize;
 
-struct Machine {
+pub struct Machine {
     ip: usize,
     stack: Vec<Word>,
     memory: Vec<Word>,
@@ -12,7 +9,7 @@ struct Machine {
 }
 
 impl Machine {
-    fn new(program: Vec<u8>, memsize: usize) -> Self {
+    pub fn new(program: Vec<u8>, memsize: usize) -> Self {
         Self {
             ip: 0,
             stack: Vec::with_capacity(256),
@@ -22,146 +19,177 @@ impl Machine {
         }
     }
 
+    #[inline(always)]
     fn fetch_u8(&mut self) -> u8 {
-        let b = self.program[self.ip];
+        // Safe indexing with panic on OOB (or return Result)
+        let b = *self
+            .program
+            .get(self.ip)
+            .expect("fetch_u8: program counter out of bounds");
         self.ip += 1;
         b
     }
-
+    #[inline(always)]
     fn fetch_u16(&mut self) -> u16 {
-        let bytes = &self.program[self.ip..self.ip + 2];
+        // Fixed bug: u16 is 2 bytes, not 4
+        if self.ip + 2 > self.program.len() {
+            panic!("fetch_u16: unexpected end of program");
+        }
+        let lo = self.program[self.ip] as u16;
+        let hi = self.program[self.ip + 1] as u16;
         self.ip += 2;
-        u16::from_le_bytes(bytes.try_into().unwrap())
+        u16::from_le_bytes([lo as u8, hi as u8])
     }
-
+    #[inline(always)]
     fn fetch_i32(&mut self) -> i32 {
-        let bytes = &self.program[self.ip..self.ip + 2];
-        self.ip += 2;
-        i32::from_le_bytes(bytes.try_into().unwrap())
+        if self.ip + 4 > self.program.len() {
+            panic!("fetch_i32: unexpected end of program");
+        }
+        let mut bytes = [0u8; 4];
+        bytes.copy_from_slice(&self.program[self.ip..self.ip + 4]);
+        self.ip += 4;
+        i32::from_le_bytes(bytes)
     }
-
+    #[inline(always)]
     fn push(&mut self, v: Word) {
         self.stack.push(v);
     }
-
+    #[inline(always)]
     fn pop(&mut self) -> Word {
-        self.stack.pop().expect("Stack overflow")
+        self.stack
+            .pop()
+            .unwrap_or_else(|| panic!("pop: stack underflow"))
+    }
+    #[inline(always)]
+    fn peek(&self) -> Word {
+        *self
+            .stack
+            .last()
+            .unwrap_or_else(|| panic!("peek: stack empty"))
     }
 
-    fn peek(&mut self) -> Word {
-        *self.stack.last().expect("stack empty")
-    }
-
-    fn run(&mut self) {
-        let op = self.fetch_u8();
-        match op {
-            0x00 => {} // NO OP
-            0x01 => {
-                // PUSH
-                let imm = self.fetch_i32();
-                self.push(imm);
-            }
-            0x02 => {
-                // POP
-                self.pop();
-            }
-            0x03 => {
-                // DUP (duplicate)
-                let v = self.peek();
-                self.push(v);
-            }
-            0x04 => {
-                // SWAP
-                let n = self.stack.len();
-                if n > 2 {
-                    panic!("swap needs 2 values")
-                };
-                self.stack.swap(n - 1, n - 2);
-            }
-            // arithemetic ops
-            0x10 => {
-                // ADD
-                let a = self.pop();
-                let b = self.pop();
-                self.push(b.wrapping_add(a));
-            }
-            0x11 => {
-                // SUB
-                let a = self.pop();
-                let b = self.pop();
-                self.push(b.wrapping_sub(a));
-            }
-            0x12 => {
-                // MUL
-                let a = self.pop();
-                let b = self.pop();
-                self.push(b.wrapping_mul(a));
-            }
-            0x13 => {
-                // DIV
-                let a = self.pop();
-                let b = self.pop();
-                self.push(b.wrapping_div(a));
-            }
-
-            0x20 => {
-                // LOAD u16 -> push memory[addr]
-                let addr = self.fetch_u8() as usize;
-                self.push(self.memory.get(addr).copied().unwrap_or(0));
-            }
-            0x21 => {
-                // STORE u16 <- pop
-                let addr = self.fetch_u8() as usize;
-                let v = self.pop();
-                if addr >= self.memory.len() {
-                    panic!("MEMORY STORE OOB");
+    pub fn run_loop(&mut self) {
+        while !self.halted {
+            // Optional debug print (disabled in release via log level)
+            // clone cuz I'm too lazy to solve reference problems in rust
+            dbg!("IP={}, Stack={:?}", self.ip, self.stack.clone());
+            let op = self.fetch_u8();
+            match op {
+                0x00 => { /* NO-OP */ }
+                0x01 => {
+                    let imm = self.fetch_i32();
+                    self.push(imm);
                 }
-                self.memory[addr] = v;
-            }
-            0x30 => {
-                // JMP u16
-                let target = self.fetch_u16() as usize;
-                self.ip = target;
-            }
-            0x31 => {
-                // jz u16
-                let target = self.fetch_u16() as usize;
-                let cond = self.pop();
-                if cond == 0 {
-                    self.ip = target
-                };
-            }
-            0x32 => {
-                // jnz u16
-                let target = self.fetch_u16() as usize;
-                let cond = self.pop();
-                if cond != 0 {
+                0x02 => {
+                    self.pop();
+                }
+                0x03 => {
+                    let v = self.peek();
+                    self.push(v);
+                }
+                0x04 => {
+                    // SWAP: require at least 2 elements
+                    let n = self.stack.len();
+                    if n < 2 {
+                        panic!("swap: need at least 2 values");
+                    }
+                    self.stack.swap(n - 1, n - 2);
+                }
+                // Arithmetic ops
+                0x10 => {
+                    let a = self.pop();
+                    let b = self.pop();
+                    self.push(b.wrapping_add(a));
+                }
+                0x11 => {
+                    let a = self.pop();
+                    let b = self.pop();
+                    self.push(b.wrapping_sub(a));
+                }
+                0x12 => {
+                    let a = self.pop();
+                    let b = self.pop();
+                    self.push(b.wrapping_mul(a));
+                }
+                0x13 => {
+                    let a = self.pop();
+                    let b = self.pop();
+                    if a == 0 {
+                        panic!("divide by zero");
+                    }
+                    self.push(b.wrapping_div(a));
+                }
+                // Memory ops
+                0x20 => {
+                    let addr = self.fetch_u8() as usize;
+                    let val = self.memory.get(addr).copied().unwrap_or(0);
+                    self.push(val);
+                }
+                0x21 => {
+                    let addr = self.fetch_u8() as usize;
+                    let v = self.pop();
+                    if addr >= self.memory.len() {
+                        panic!("memory store out of bounds");
+                    }
+                    self.memory[addr] = v;
+                }
+                0x22 => {
+                    let addr = self.pop() as usize;
+                    let val = *self
+                        .memory
+                        .get(addr)
+                        .unwrap_or_else(|| panic!("memory load indirect OOB"));
+                    self.push(val);
+                }
+                0x23 => {
+                    let addr = self.pop() as usize;
+                    let val = self.pop();
+                    if addr >= self.memory.len() {
+                        panic!("memory store indirect OOB");
+                    }
+                    self.memory[addr] = val;
+                }
+                // Control flow
+                0x30 => {
+                    let target = self.fetch_u16() as usize;
+                    // Optional: check target < program.len()
                     self.ip = target;
                 }
+                0x31 => {
+                    let target = self.fetch_u16() as usize;
+                    let cond = self.pop();
+                    if cond == 0 {
+                        self.ip = target;
+                    }
+                }
+                0x32 => {
+                    let target = self.fetch_u16() as usize;
+                    let cond = self.pop();
+                    if cond != 0 {
+                        self.ip = target;
+                    }
+                }
+                0x40 => {
+                    let target = self.fetch_u16() as usize;
+                    let ret = self.ip as i32;
+                    self.push(ret);
+                    self.ip = target;
+                }
+                0x41 => {
+                    let ret = self.pop();
+                    self.ip = ret as usize;
+                }
+                0x50 => {
+                    let v = self.pop();
+                    println!("{}", v);
+                }
+                0xFF => {
+                    self.halted = true;
+                }
+                other => {
+                    panic!("unknown opcode {:#x} at {}", other, self.ip - 1);
+                }
             }
-            0x40 => {
-                // call u16 (push ret addr, jmp)
-                let target = self.fetch_u16() as usize;
-                // push return addr (cur IP)
-                let ret = self.ip as i32;
-                self.push(ret);
-                self.ip = target;
-            }
-            0x41 => {
-                let ret = self.pop();
-                self.ip = ret as usize;
-            }
-
-            0x50 => {
-                // PRINT (pop and print)
-                let v = self.pop();
-                println!("{}", v);
-            }
-
-            0xFF => {
-                self.halted = true;
-            }
-            _ => panic!("unknown opcode {:#x} at {}", op, self.ip - 1),
         }
     }
 }

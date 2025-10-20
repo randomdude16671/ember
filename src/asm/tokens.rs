@@ -58,3 +58,9 @@ pub enum TokenType {
     Operator(Op),
     Special(Special),
 }
+
+#[derive(Debug, Clone)]
+pub struct Token {
+    pub typ: TokenType,
+    pub literal: String,
+}
