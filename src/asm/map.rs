@@ -2,9 +2,9 @@
 macro_rules! map {
     ( $( $x:expr => $y:expr ), * $(,)? ) => {
         {
-            let temp_hashmap = hashbrown::HashMap::new();
+            let mut temp_hashmap = hashbrown::HashMap::new();
             $(
-                temp_hashmap.insert($x, $y);
+                temp_hashmap.insert($x.to_string(), $y);
             )*
             temp_hashmap
         }
