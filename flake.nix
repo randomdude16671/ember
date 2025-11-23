@@ -1,29 +1,82 @@
 {
-  description = "ember: a tiny virtual machine written in rust";
+  description = "A terminal slideshow tool";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    flake-parts.url = "github:hercules-ci/flake-parts";
-    rust-flake.url = "github:juspay/rust-flake";
-    systems.url = "github:nix-systems/default";
+    nixpkgs.url = "nixpkgs/nixos-unstable";
+    flakebox = {
+      url = "github:rustshop/flakebox?rev=47f7fe6aa0951ee984800f3e339c0c54f4a4e862";
+    };
+
+    flake-utils.url = "github:numtide/flake-utils";
   };
 
   outputs =
-    inputs@{ flake-parts, ... }:
-    flake-parts.lib.mkFlake { inherit inputs; } {
-      systems = import inputs.systems;
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+      flakebox,
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
+      let
+        pkgs = import nixpkgs {
+          inherit system;
+        };
 
-      imports = [
-        inputs.rust-flake.flakeModules.default
-        inputs.rust-flake.flakeModules.nixpkgs
-      ];
+        projectName = "ember";
 
-      perSystem =
-        { pkgs, self', ... }:
-        {
-          rust-project = {
-            cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
+        flakeboxLib = flakebox.lib.${system} {
+          config = {
+            github.ci.buildOutputs = [ ".#ci.${projectName}" ];
           };
         };
-    };
+
+        buildPaths = [
+          "build.rs"
+          "Cargo.toml"
+          "Cargo.lock"
+          ".cargo"
+          "src"
+          "themes"
+          "bat"
+          "executors.yaml"
+        ];
+
+        buildSrc = flakeboxLib.filterSubPaths {
+          root = builtins.path {
+            name = projectName;
+            path = ./.;
+          };
+          paths = buildPaths;
+        };
+
+        multiBuild = (flakeboxLib.craneMultiBuild { }) (
+          craneLib':
+          let
+            craneLib = (
+              craneLib'.overrideArgs {
+                pname = projectName;
+                src = buildSrc;
+                nativeBuildInputs = [ ];
+              }
+            );
+          in
+          {
+            ${projectName} = craneLib.buildPackage { };
+          }
+        );
+      in
+      {
+        packages.default = multiBuild.${projectName};
+
+        legacyPackages = multiBuild;
+
+        devShells = flakeboxLib.mkShells {
+          packages = [
+            pkgs.bacon
+          ];
+        };
+      }
+    );
 }

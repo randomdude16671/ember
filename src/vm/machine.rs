@@ -70,9 +70,7 @@ impl Machine {
 
     pub fn run_loop(&mut self) {
         while !self.halted {
-            // Optional debug print (disabled in release via log level)
-            // clone cuz I'm too lazy to solve reference problems in rust
-            dbg!("IP={}, Stack={:?}", self.ip, self.stack.clone());
+            println!("IP={}, Stack={:?}", self.ip, self.stack.clone()); // DEBUG
             let op = self.fetch_u8();
             match op {
                 0x00 => { /* NO-OP */ }

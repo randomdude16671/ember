@@ -3,7 +3,6 @@ pub mod vm;
 
 enum Example {
     HelloWorld,
-    Fib,
 }
 
 fn gather_example() -> Example {
@@ -15,9 +14,6 @@ fn main() {
     match example {
         Example::HelloWorld => {
             println!("TODO");
-        }
-        _ => {
-            todo!("Todo");
         }
     }
 }

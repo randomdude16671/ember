@@ -1,6 +1,7 @@
+use hashbrown::HashMap;
+
 use crate::asm::tokens::*;
 use crate::map;
-use hashbrown::HashMap;
 
 struct Rpos {
     ln: usize,
@@ -8,7 +9,7 @@ struct Rpos {
 }
 
 impl Rpos {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self { ln: 1, col: 0 }
     }
 
@@ -24,6 +25,7 @@ impl Rpos {
     }
 }
 
+#[allow(dead_code)]
 pub struct Tokenizer<'a> {
     src: &'a String,
     input: std::str::Chars<'a>,
@@ -122,7 +124,7 @@ impl<'a> Tokenizer<'a> {
     fn read_number(&mut self) -> Token {
         let start = self.position;
         while let Some(c) = self.ch {
-            if c.is_digit(10) {
+            if c.is_ascii_digit() {
                 self.read_char();
             } else {
                 break;

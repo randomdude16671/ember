@@ -5,3 +5,11 @@ edition = "2024"
 
 [dependencies]
 hashbrown = "0.16.0"
+
+[profile]
+
+[profile.ci]
+inherits = "dev"
+incremental = false
+debug = "line-tables-only"
+lto = "off"
