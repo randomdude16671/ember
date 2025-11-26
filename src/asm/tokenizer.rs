@@ -1,9 +1,11 @@
+#![allow(dead_code)]
 use hashbrown::HashMap;
 
 use crate::asm::tokens::*;
 use crate::map;
 
-struct Rpos {
+#[derive(Clone)]
+pub struct Rpos {
     ln: usize,
     col: usize,
 }
@@ -140,18 +142,66 @@ impl<'a> Tokenizer<'a> {
 
     fn read_string(&mut self) -> Token {
         self.read_char(); // skip opening "
-        let start = self.position;
+        let mut result = String::new();
+
         while let Some(c) = self.ch {
             if c == '"' {
                 break;
             }
-            self.read_char();
+
+            if c == '\\' {
+                // start of escape
+                self.read_char(); // consume '\'
+                match self.ch {
+                    Some('n') => {
+                        result.push('\n');
+                        self.read_char();
+                    }
+                    Some('t') => {
+                        result.push('\t');
+                        self.read_char();
+                    }
+                    Some('r') => {
+                        result.push('\r');
+                        self.read_char();
+                    }
+                    Some('0') => {
+                        result.push('\0');
+                        self.read_char();
+                    }
+                    Some('"') => {
+                        result.push('"');
+                        self.read_char();
+                    }
+                    Some('\\') => {
+                        result.push('\\');
+                        self.read_char();
+                    }
+                    // unknown escape: keep the char literally (or error)
+                    Some(other) => {
+                        result.push(other);
+                        self.read_char();
+                    }
+                    None => {
+                        // ERROR: handle more gracefully :smile_sweat:
+                        panic!("EOF IN ESCAPE SEQUENCE");
+                    }
+                }
+            } else {
+                // normal character
+                result.push(c);
+                self.read_char();
+            }
         }
-        let literal = self.src[start..self.position].to_string();
-        self.read_char(); // skip closing "
+
+        // at this point self.ch is '"' or None
+        if self.ch == Some('"') {
+            self.read_char(); // skip closing "
+        }
+
         Token {
-            typ: TokenType::String(Literal::String(literal.clone())),
-            literal,
+            typ: TokenType::String(Literal::String(result.clone())),
+            literal: result,
         }
     }
 

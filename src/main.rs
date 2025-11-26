@@ -1,4 +1,4 @@
-pub mod asm;
+pub(crate) mod asm;
 pub mod vm;
 
 enum Example {
